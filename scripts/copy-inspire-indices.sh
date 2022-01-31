@@ -16,17 +16,17 @@
 #
 #  Use -h for HELP
 #
-# v1.1 - 2022-01-29 - ckayfish
+# v1.1.1 - 2022-01-30 - ckayfish
 #
 #########################################################################################
 
-DEST="host.domain"     # Destination hostname or IP
-IPORTS=()              # An array of specific index ports. Use -i <#####> once or more
-COPYFILES="false"      # Files are not copied by default. Use -c to copy
-FORMAT="false"         # Use -f to display simple format
-APPROVEEACH="false"    # Use -a to be prompted to approve
-QUIET="false"          # Use -q to bypass prompts. Still prompt for each index with -a
-SKIP="false"           # Use -s to skip the network test
+DEST=""  # Destination hostname or IP
+IPORTS=()                # An array of specific index ports. Use -i <#####> once or more
+COPYFILES="false"        # Files are not copied by default. Use -c to copy
+FORMAT="false"           # Use -f to display simple format
+APPROVEEACH="false"      # Use -a to be prompted to approve
+QUIET="false"            # Use -q to bypass prompts. Still prompt for each index with -a
+SKIP="false"             # Use -s to skip the network test
 
 helpout() { # Define help function for when -h is included in command line
    echo
@@ -34,18 +34,19 @@ helpout() { # Define help function for when -h is included in command line
    echo
    echo "Syntax: $0 -d <hostname> [-i <index_port>|-c|-f|-a|-q|-h]"
    echo "Options:"
-   echo "   -d <hostname> - Set the hostname/IP of the (d)estination appliance."
-   echo "   -i <PORT>    - Specify (i)ndex port. Repeat for all desired indices"
+   echo "   -d <HOST> - Set the hostname/IP of the (d)estination appliance."
+   echo "   -i <PORT> - Specify (i)ndex port. Repeat for all desired indices."
+   echo "                If no index port(s) specified, get all active from mesconfig."
    echo "   -c - (c)opy files to destination. Default is to not copy, show details only."
-   echo "   -f - display simple (f)ormat for index details."
+   echo "   -f - (f)ormat output simply for quick view of indices."
    echo "   -a - (a)pprove each index. Default is to act on all enabled indices."
-   echo "   -q - Run (q)ueitly. (a)pprove still occurs is selected."
+   echo "   -q - (q)ueitly run to avoid prompts. (a) still respected if selected."
    echo "   -s - (s)kip network test to view index details without checking destination."
-   echo "   -h - Print this (h)elp if unknown options used."
+   echo "   -h - (h)elp info displayed if selected or unknown options used."
    echo
-   echo "To only list all indices:        \"$ $0 -fqs\""
+   echo "To only list all source indices: \"$ $0 -fqs\""
    echo "To copy all indices to the dest: \"$ $0 -d <FQDN/IP> -c\""
-   echo "To copy a few specific indices:  \"$ $0 -d <FQDN/IP> -i <12335> -i <34567> -c\""
+   echo "To copy a few specific  indices: \"$ $0 -d <FQDN/IP> -i <12335> -i <34567> -c\""
    echo "!!! INDICES MUST BE DISABLED, OR MESNODE STOPPED, ON DESTINATION SERVER !!!"
    echo
 }
@@ -73,30 +74,31 @@ echo "  Use -h for (h)elp"
 export PATH=/usr/bin:/opt/mindbreeze/bin #Include locations of exectables we will be running
 
 # Perform network test unless (s)skip is seleced
-if [[ $SKIP = "true" ]] ; then echo "Skipping network test to $DEST"; else
+if [[ $SKIP = "true" ]] ; then echo "  Skipping network test."; else
   # Confirm we can connect to the destination on TCP 22 as required by rsync
   timeout 3 bash -c "</dev/tcp/$DEST/22"
   if [ $? -ne 0 ]; then
     echo "  Cannot connect to \"$DEST\" on TCP 22. DNS or network failed."
-    echo "  Set (d)estination hostname or IP on command line using -d <hostname/IP>"
-        echo "  or use -s to (s)kip the network test to see local indices"
+    echo "  Set (d)estination hostname or IP using option -d <hostname/IP>"
+        echo "  or use -s to (s)kip the network test to see local indices."
     echo
     exit
   else
     echo "  Confirmed connection on TCP 22 for \"$DEST\""
   fi
+  # Prompt to confirm indices on destination server are disabled, or mesnode stopped, unless (q)uiet is selected
+  # Inside test for (s)kip since copy is couterindicated by skipping the network test
+  if [[ ! $QUIET = "true" ]] ; then
+    echo "  IMPORTANT: Continue ONLY if indices are disabled, or mesnode stopped, on the destination server (check Services page)."
+    read -p "Press 'y' if you are ready to proceed: " -n1 -r
+    if [[ ! $REPLY =~ ^[Yy] ]]; then printf "\nExiting script\n"; exit; else echo; echo "$(timestamp) - Begin processing with destination: \"$DEST\""; echo; fi
+  else
+    echo "$(timestamp) - QUIET MODE"
+  fi
 fi
 
-# Promtp to confirm indices on destination server are disabled, or mesnode stopped, unless (quiet)
-if [[ ! $QUIET = "true" ]] ; then
-  echo "  IMPORTANT: Continue ONLY if indices are disabled, or mesnode stopped, on the destination server (check Services page)."
-  read -p "Press 'y' if you are ready to proceed: " -n1 -r
-  if [[ ! $REPLY =~ ^[Yy] ]]; then printf "\nExiting script\n"; exit; else echo; echo "$(timestamp) - Begin processing with destination: \"$DEST\""; echo; fi
-else
-  echo "$(timestamp) - QUIET MODE"
-fi
 
-# Initialize variable counting indices and sizes
+# Initialize variables counting indices and sizes
 NUM_INDICES_FOUND=0
 NUM_INDICES_COPIED=0
 TOTALBYTES=0
@@ -129,14 +131,15 @@ for BINDPORT in $INDEXPORTS; do
   SIZEBYTES=$(du -s $IDXPATH | cut -f1)
   TOTALBYTES=$((TOTALBYTES + SIZEBYTES)) # Add number of bytes for this index to total bytes
   # If FORMAT option was selected, display simple format for index details.
-  if [ $FORMAT == "true" ]; then printf "  Name: \"$name\" ID: \"$id\" Path: \"$IDXPATH\" Size: \"$(echo "scale=3;$SIZEBYTES / 1000000" | bc)GB\"\n"; else 
+  if [ $FORMAT == "true" ]; then printf "  Name: \"$name\" ID: \"$id\" Path: \"$IDXPATH\" Size: \"$(echo "scale=3;$SIZEBYTES / 1000000" | bc)GB\"\n"
+  else 
      printf "  Name: $name\n  ID: $id\n  Path: $IDXPATH\n  Size: $(echo "scale=3;$SIZEBYTES / 1000000" | bc)GB\n" # Display index name, id, path and size
      echo "  Sync command: \"rsync -a $IDXPATH/ root@$DEST:/var/data/default/${IDXPATH:1}\"" # echo rsync command for user to see what's going on
   fi
   # IF APPROVEEACH is "true", prompt user for each index
-  if [ "$APPROVEEACH" = "true" ]; then
+  if [ "$APPROVEEACH" == "true" ]; then
     read -p "Press 'y' to copy index \"$name\": " -n1 -r
-    if [[ ! $REPLY =~ ^[Yy] ]] ; then echo " Skipping this index"; echo; continue; else echo " Proceeding"; fi
+    if [[ ! $REPLY =~ ^[Yy] ]] ; then echo "  Skipping this index"; echo; continue; else echo "  Proceeding"; fi
   fi
   if [ "$COPYFILES" == "true" ] && [ "$SKIP" == "false" ]; then # Do not execute unless user requests it with variable/option
     if [ $FORMAT == "false" ]; then echo "$(timestamp) - Setting index to readonly"; fi
