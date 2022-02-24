@@ -146,7 +146,7 @@ for BINDPORT in $INDEXPORTS; do
     mescontrol http://localhost:"$PORT" readonly  # Set index to readonly
 	if [ $FORMAT == "false" ]; then mescontrol http://localhost:"$PORT" status; fi 
     echo "$(timestamp) - Syncing index \"$name\" to $DEST"
-    rsync -a "$IDXPATH"/ root@"$DEST":/var/data/default/"${IDXPATH:1}"
+    rsync -a "$IDXPATH"/ root@"$DEST":/var/data/default/"${IDXPATH:1}" --delete
     TOTALBYTESCOPY=$((TOTALBYTESCOPY + SIZEBYTES)) # Add number of bytes for this index to total bytes copied
     ((NUM_INDICES_COPIED++))
     if [ $FORMAT == "false" ]; then echo "$(timestamp) - Setting index to read-write"; fi
